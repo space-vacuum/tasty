@@ -91,38 +91,43 @@ executeTest
   -> Seq.Seq Finalizer -- ^ finalizers (to be executed in this order)
   -> IO ()
 executeTest action statusVar timeoutOpt inits fins = mask $ \restore -> do
-  resultOrExn <- try $ restore $ do
-    -- N.B. this can (re-)throw an exception. It's okay. By design, the
-    -- actual test will not be run, then. We still run all the
-    -- finalizers.
-    --
-    -- There's no point to transform these exceptions to something like
-    -- EitherT, because an async exception (cancellation) can strike
-    -- anyway.
-    initResources
+      resultOrExn <- try $ restore $ do
+        -- N.B. this can (re-)throw an exception. It's okay. By design, the
+        -- actual test will not be run, then. We still run all the
+        -- finalizers.
+        --
+        -- There's no point to transform these exceptions to something like
+        -- EitherT, because an async exception (cancellation) can strike
+        -- anyway.
+        initResources
 
-    -- If all initializers ran successfully, actually run the test.
-    -- We run it in a separate thread, so that the test's exception
-    -- handler doesn't interfere with our timeout.
-    withAsync (action yieldProgress) $ \asy -> do
-      labelThread (asyncThreadId asy) "tasty_test_execution_thread"
-      timed $ applyTimeout timeoutOpt $ do
-        r <- wait asy
-        -- Not only wait for the result to be returned, but make sure to
-        -- evalute it inside applyTimeout; see #280.
-        evaluate $
-          resultOutcome r `seq`
-          forceElements (resultDescription r) `seq`
-          forceElements (resultShortDescription r)
-        return r
+        -- If all initializers ran successfully, actually run the test.
+        -- We run it in a separate thread, so that the test's exception
+        -- handler doesn't interfere with our timeout.
+        withAsync (action yieldProgress) $ \asy -> do
+          labelThread (asyncThreadId asy) "tasty_test_execution_thread"
+          timed $ applyTimeout timeoutOpt $ do
+            r <- wait asy
+            -- Not only wait for the result to be returned, but make sure to
+            -- evalute it inside applyTimeout; see #280.
+            evaluate $
+              resultOutcome r `seq`
+              forceElements (resultDescription r) `seq`
+              forceElements (resultShortDescription r)
+            return r
 
-  -- no matter what, try to run each finalizer
-  mbExn <- destroyResources restore
+      -- no matter what, try to run each finalizer
+      mbExn <- destroyResources restore
 
-  atomically . writeTVar statusVar $ Done $
-    case resultOrExn <* maybe (Right ()) Left mbExn of
-      Left ex -> exceptionResult ex
-      Right (t,r) -> r { resultTime = t }
+      atomically $ do
+        res <- readTVar statusVar
+        case res of
+          Done _ -> pure ()
+          _ ->
+            writeTVar statusVar $ Done $
+              case resultOrExn <* maybe (Right ()) Left mbExn of
+                Left ex -> exceptionResult ex
+                Right (t,r) -> r { resultTime = t }
 
   where
     initResources :: IO ()

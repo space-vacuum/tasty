@@ -48,15 +48,17 @@ module Test.Tasty.Runners
   , module Test.Tasty.Patterns
     -- * Utilities
   , module Test.Tasty.Runners.Utils
+    -- * SimSpace skip runner
+  , consoleTestSkipReporter
   )
   where
 
+import Test.Tasty.CmdLine
 import Test.Tasty.Core
-import Test.Tasty.Run
 import Test.Tasty.Ingredients
+import Test.Tasty.Ingredients.Basic
 import Test.Tasty.Options.Core
 import Test.Tasty.Patterns
-import Test.Tasty.CmdLine
-import Test.Tasty.Ingredients.Basic
+import Test.Tasty.Run
 import Test.Tasty.Runners.Reducers
 import Test.Tasty.Runners.Utils

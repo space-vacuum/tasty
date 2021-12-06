@@ -16,9 +16,11 @@ module Test.Tasty.Ingredients.Basic
   , testsNames
     -- ** Adding options
   , includingOptions
+    -- ** SimSpace specific console test reporter
+  , consoleTestSkipReporter
   )
   where
 
 import Test.Tasty.Ingredients.ConsoleReporter
-import Test.Tasty.Ingredients.ListTests
 import Test.Tasty.Ingredients.IncludingOptions
+import Test.Tasty.Ingredients.ListTests
