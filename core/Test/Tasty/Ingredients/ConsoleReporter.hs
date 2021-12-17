@@ -92,7 +92,9 @@ instance Sem.Semigroup TestOutput where
   (<>) = Seq
 instance Monoid TestOutput where
   mempty = Skip
-
+#if !MIN_VERSION_base(4,11,0)
+  mappend = (Sem.<>)
+#endif
 
 
 
@@ -301,7 +303,9 @@ instance Sem.Semigroup Statistics where
   Statistics t1 f1 <> Statistics t2 f2 = Statistics (t1 + t2) (f1 + f2)
 instance Monoid Statistics where
   mempty = Statistics 0 0
-
+#if !MIN_VERSION_base(4,11,0)
+  mappend = (Sem.<>)
+#endif
 
 
 
@@ -410,7 +414,6 @@ consoleTestReporter' reporter = TestReporter consoleTestReporterOptions $ \opts 
     hook = (return .) . appendPatternIfTestFailed tests pattern
     TestReporter _ cb = consoleTestReporterWithHook' hook reporter
   in cb opts tree
-
 
 appendPatternIfTestFailed
   :: [TestName] -- ^ list of (pre-intercalated) test names
@@ -663,7 +666,9 @@ instance Ord a => Sem.Semigroup (Maximum a) where
   a <> MinusInfinity = a
 instance Ord a => Monoid (Maximum a) where
   mempty = MinusInfinity
-
+#if !MIN_VERSION_base(4,11,0)
+  mappend = (Sem.<>)
+#endif
 
 
 
@@ -691,13 +696,14 @@ computeAlignment opts =
 --   (This only works properly on Unix at the moment; on Windows, the function
 --   treats every character as width-1 like 'Data.List.length' does.)
 stringWidth :: String -> Int
-
+#ifdef VERSION_wcwidth
 stringWidth = Prelude.sum . map charWidth
  where charWidth c = case wcwidth c of
         -1 -> 1  -- many chars have "undefined" width; default to 1 for these.
         w  -> w
-
-
+#else
+stringWidth = length
+#endif
 
 
 -- (Potentially) colorful output
