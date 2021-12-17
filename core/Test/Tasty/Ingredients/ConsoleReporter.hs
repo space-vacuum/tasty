@@ -96,8 +96,6 @@ instance Monoid TestOutput where
   mappend = (Sem.<>)
 #endif
 
-
-
 applyHook :: ([TestName] -> Result -> IO Result) -> TestOutput -> TestOutput
 applyHook hook = go []
   where
@@ -306,8 +304,6 @@ instance Monoid Statistics where
 #if !MIN_VERSION_base(4,11,0)
   mappend = (Sem.<>)
 #endif
-
-
 
 -- | @computeStatistics@ computes a summary 'Statistics' for
 -- a given state of the 'StatusMap'.
@@ -670,8 +666,6 @@ instance Ord a => Monoid (Maximum a) where
   mappend = (Sem.<>)
 #endif
 
-
-
 -- | Compute the amount of space needed to align \"OK\"s and \"FAIL\"s
 computeAlignment :: OptionSet -> TestTree -> Int
 computeAlignment opts =
@@ -704,7 +698,6 @@ stringWidth = Prelude.sum . map charWidth
 #else
 stringWidth = length
 #endif
-
 
 -- (Potentially) colorful output
 ok, fail, skipped, infoOk, infoFail :: (?colors :: Bool) => String -> IO ()
