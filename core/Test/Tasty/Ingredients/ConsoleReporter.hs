@@ -1,5 +1,5 @@
 -- vim:fdm=marker
-{-# LANGUAGE RankNTypes, BangPatterns, ImplicitParams, MultiParamTypeClasses, DeriveDataTypeable, FlexibleContexts #-}
+{-# LANGUAGE BangPatterns, ImplicitParams, MultiParamTypeClasses, DeriveDataTypeable, FlexibleContexts #-}
 -- | Console reporter ingredient
 module Test.Tasty.Ingredients.ConsoleReporter
   ( consoleTestReporter
@@ -24,17 +24,16 @@ module Test.Tasty.Ingredients.ConsoleReporter
   , buildTestOutput
   , foldTestOutput
   , withConsoleFormat
-  -- SimSpace specific test skipping code
-  , consoleTestSkipReporter
   ) where
 
+import Prelude hiding (fail, EQ)
+import Control.Monad.State hiding (fail)
+import Control.Monad.Reader hiding (fail,reader)
 import Control.Concurrent.STM
 import Control.Exception
-import Control.Monad.Reader hiding (fail, reader)
-import Control.Monad.State hiding (fail)
-import Data.Char
-import Prelude hiding (EQ, fail)
 import Test.Tasty.Core
+import Test.Tasty.Providers.ConsoleFormat
+import Test.Tasty.Run
 import Test.Tasty.Ingredients
 import Test.Tasty.Ingredients.ListTests
 import Test.Tasty.Options
@@ -42,27 +41,26 @@ import Test.Tasty.Options.Core
 import Test.Tasty.Patterns
 import Test.Tasty.Patterns.Printer
 import Test.Tasty.Patterns.Types
-import Test.Tasty.Providers.ConsoleFormat
-import Test.Tasty.Run
 import Test.Tasty.Runners.Reducers
 import Test.Tasty.Runners.Utils
 import Text.Printf
 import qualified Data.IntMap as IntMap
-
+import Data.Char
+#ifdef VERSION_wcwidth
 import Data.Char.WCWidth (wcwidth)
-
+#endif
 import Data.List (isInfixOf)
 import Data.Maybe
 import Data.Monoid (Any(..))
-import Data.Typeable
-import Options.Applicative hiding (Failure, Success, action, str)
-import System.Console.ANSI
-import System.IO
 import qualified Data.Semigroup as Sem
-
-
-
-
+import Data.Typeable
+import Options.Applicative hiding (action, str, Success, Failure)
+import System.IO
+import System.Console.ANSI
+#if !MIN_VERSION_base(4,11,0)
+import Data.Monoid
+import Data.Foldable (foldMap)
+#endif
 
 --------------------------------------------------
 -- TestOutput base definitions
@@ -147,7 +145,7 @@ buildTestOutput opts tree =
             printFn (printf " (%.2fs)" time)
           printFn "\n"
 
-          unless (null rDesc) $
+          when (not $ null rDesc) $
             (if resultSuccessful result then infoOk else infoFail) $
               printf "%s%s\n" (indent $ level + 1) (formatDesc (level+1) rDesc)
           case resultDetailsPrinter result of
@@ -220,7 +218,7 @@ consoleOutput toutput smap =
           printResult r
       , Any True)
     foldHeading _name printHeading (printBody, Any nonempty) =
-      ( Traversal $
+      ( Traversal $ do
           when nonempty $ do printHeading :: IO (); getTraversal printBody
       , Any nonempty
       )
@@ -254,7 +252,7 @@ streamOutputHidingSuccesses toutput smap =
   where
     foldTest _name printName getResult printResult =
       Ap $ do
-          r <- liftIO getResult
+          r <- liftIO $ getResult
           if resultSuccessful r
             then return $ Any False
             else do
@@ -398,17 +396,12 @@ statusMapResult lookahead0 smap
 
 -- | A simple console UI
 consoleTestReporter :: Ingredient
-consoleTestReporter = consoleTestReporter' defaultReporter
-
--- | A generalization of `consoleTestReporter` that takes a custom
--- test reporter function
-consoleTestReporter' :: ((?colors :: Bool) => StatusMap -> Time -> IO Bool) -> Ingredient
-consoleTestReporter' reporter = TestReporter consoleTestReporterOptions $ \opts tree ->
+consoleTestReporter = TestReporter consoleTestReporterOptions $ \opts tree ->
   let
     TestPattern pattern = lookupOption opts
     tests = testsNames opts tree
     hook = (return .) . appendPatternIfTestFailed tests pattern
-    TestReporter _ cb = consoleTestReporterWithHook' hook reporter
+    TestReporter _ cb = consoleTestReporterWithHook hook
   in cb opts tree
 
 appendPatternIfTestFailed
@@ -444,10 +437,15 @@ consoleTestReporterOptions =
   , Option (Proxy :: Proxy AnsiTricks)
   ]
 
--- | A generalization of `consoleTestReporterWithHook` that takes a custom
--- test reporter function
-consoleTestReporterWithHook' :: ([TestName] -> Result -> IO Result) -> ((?colors :: Bool) => StatusMap -> Time -> IO Bool) -> Ingredient
-consoleTestReporterWithHook' hook reporter = TestReporter consoleTestReporterOptions $
+-- | A simple console UI with a hook to postprocess results,
+-- depending on their names and external conditions
+-- (e. g., its previous outcome, stored in a file).
+-- Names are listed in reverse order:
+-- from test's own name to a name of the outermost test group.
+--
+-- @since 1.4.2
+consoleTestReporterWithHook :: ([TestName] -> Result -> IO Result) -> Ingredient
+consoleTestReporterWithHook hook = TestReporter consoleTestReporterOptions $
   \opts tree -> Just $ \smap -> do
 
   let
@@ -487,25 +485,10 @@ consoleTestReporterWithHook' hook reporter = TestReporter consoleTestReporterOpt
             | otherwise -> consoleOutput toutput smap
           }
 
-          return $ reporter smap
-
--- | A simple console UI with a hook to postprocess results,
--- depending on their names and external conditions
--- (e. g., its previous outcome, stored in a file).
--- Names are listed in reverse order:
--- from test's own name to a name of the outermost test group.
---
--- @since 1.4.2
-consoleTestReporterWithHook :: ([TestName] -> Result -> IO Result) -> Ingredient
-consoleTestReporterWithHook hook = consoleTestReporterWithHook' hook defaultReporter
-
--- | Standard tasty test reporting showing test successes and failures
-defaultReporter :: (?colors :: Bool) => StatusMap -> Time -> IO Bool
-defaultReporter smap time = do
-  stats <- computeStatistics smap
-  printStatistics stats time
-  return $ statFailures stats == 0
-
+          return $ \time -> do
+            stats <- computeStatistics smap
+            printStatistics stats time
+            return $ statFailures stats == 0
 
 -- | Do not print test results (see README for details)
 newtype Quiet = Quiet Bool
@@ -574,7 +557,9 @@ instance IsOption AnsiTricks where
 
 displayBool :: Bool -> String
 displayBool b =
-  if b then "true" else "false"
+  case b of
+    False -> "false"
+    True  -> "true"
 
 -- | @useColor when isTerm@ decides if colors should be used,
 --   where @isTerm@ indicates whether @stdout@ is a terminal device.
@@ -734,61 +719,5 @@ withConsoleFormat format action
       action
     ) `finally` setSGR []
   | otherwise = action
-
--- }}}
-
---------------------------------------------------
--- SimSpace skip reporting code
---------------------------------------------------
--- {{{
-
-consoleTestSkipReporter :: Ingredient
-consoleTestSkipReporter = consoleTestReporter' skipReporter
-
-skipReporter :: (?colors :: Bool) => StatusMap -> Time -> IO Bool
-skipReporter smap time = do
-  stats <- computeSkipStatistics smap
-  printSkipStatistics stats time
-  return $ skipStatTotal stats - skipStatSuccess stats == 0
-
-data SkipStatistics = SkipStatistics
-  { skipStatTotal :: !Int -- ^ Number of active tests (e.g., that match the
-                      -- pattern specified on the commandline), inactive tests
-                      -- are not counted.
-  , skipStatFailures :: !Int -- ^ Number of active tests that failed.
-  , skipStatSuccess :: !Int -- ^ Number of active tests that succeeded
-  }
-
-instance Sem.Semigroup SkipStatistics where
-  SkipStatistics t1 f1 s1 <> SkipStatistics t2 f2 s2 = SkipStatistics (t1 + t2) (f1 + f2) (s1 + s2)
-instance Monoid SkipStatistics where
-  mempty = SkipStatistics 0 0 0
-
-computeSkipStatistics :: StatusMap -> IO SkipStatistics
-computeSkipStatistics =
-  getApp . foldMap (\var -> Ap $
-    (\r -> SkipStatistics
-             1
-             (if not (resultSuccessful r) && resultShortDescription r /= "SKIP" then 1 else 0)
-             (if resultSuccessful r then 1 else 0)
-    )
-      <$> getResultFromTVar var)
-
-reportSkipStatistics :: (?colors :: Bool) => SkipStatistics -> IO ()
-reportSkipStatistics st = case skipStatTotal st - skipStatSuccess st of
-    0 -> ok $ printf "All %d tests passed" (skipStatTotal st)
-    _ -> fail $ printf
-                  "%d failed and %d skipped out of %d tests"
-                  (skipStatFailures st)
-                  (skipStatTotal st - skipStatFailures st - skipStatSuccess st)
-                  (skipStatTotal st)
-
-printSkipStatistics :: (?colors :: Bool) => SkipStatistics -> Time -> IO ()
-printSkipStatistics st time = do
-  printf "\n"
-  reportSkipStatistics st
-  case skipStatTotal st - skipStatSuccess st of
-    0 -> ok $ printf " (%.2fs)\n" time
-    _ -> fail $ printf " (%.2fs)\n" time
 
 -- }}}

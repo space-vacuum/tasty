@@ -48,8 +48,6 @@ module Test.Tasty.Runners
   , module Test.Tasty.Patterns
     -- * Utilities
   , module Test.Tasty.Runners.Utils
-    -- * SimSpace skip runner
-  , consoleTestSkipReporter
   )
   where
 

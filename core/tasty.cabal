@@ -45,6 +45,7 @@ library
     Test.Tasty.Ingredients,
     Test.Tasty.Ingredients.Basic
     Test.Tasty.Ingredients.ConsoleReporter
+    Test.Tasty.Ingredients.ConsoleSkipReporter
 
     -- for testing only
     Test.Tasty.Patterns.Types
