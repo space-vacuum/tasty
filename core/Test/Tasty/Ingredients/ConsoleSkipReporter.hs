@@ -23,14 +23,10 @@ import Test.Tasty.Ingredients.ConsoleReporter
 -- NOTE: Tasty exposed-modules.
 import Test.Tasty
 import Test.Tasty.Options
-import Test.Tasty.Runners
-
--- NOTE: Tasty other-modules (not-exposed).
 import Test.Tasty.Patterns.Printer ( printAwkExpr )
+import Test.Tasty.Runners
 import Test.Tasty.Patterns.Types
-    ( Expr(And, ERE, EQ, Field, IntLit, StringLit) )
 import Test.Tasty.Providers.ConsoleFormat
-    ( failFormat, okFormat, ConsoleFormat )
 
 --------------------------------------------------
 -- TestOutput base definitions
