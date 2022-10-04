@@ -66,7 +66,7 @@ consoleOutput toutput smap =
           printResult r
       , Any True)
     foldHeading _name printHeading (printBody, Any nonempty) =
-      ( Traversal $ do
+      ( Traversal $
           when nonempty $ do printHeading :: IO (); getTraversal printBody
       , Any nonempty
       )
@@ -100,7 +100,7 @@ streamOutputHidingSuccesses toutput smap =
   where
     foldTest _name printName getResult printResult =
       Ap $ do
-          r <- liftIO $ getResult
+          r <- liftIO getResult
           if resultSuccessful r
             then return $ Any False
             else do
