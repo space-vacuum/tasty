@@ -21,29 +21,16 @@ import qualified Data.Semigroup as Sem
 import Test.Tasty.Ingredients.ConsoleReporter
 
 -- NOTE: Tasty exposed-modules.
-import Test.Tasty.Ingredients ( Ingredient(TestReporter) )
-import Test.Tasty.Options ( lookupOption, OptionDescription(..) )
+import Test.Tasty
+import Test.Tasty.Options
+import Test.Tasty.Runners
 
 -- NOTE: Tasty other-modules (not-exposed).
-import Test.Tasty.Core
-    ( resultSuccessful,
-      Outcome(Failure, Success),
-      Result(resultShortDescription, resultOutcome, resultDescription),
-      TestName,
-      Time )
-import Test.Tasty.Ingredients.ListTests ( testsNames )
-import Test.Tasty.Options.Core ( NumThreads(NumThreads) )
-import Test.Tasty.Patterns ( TestPattern(TestPattern) )
 import Test.Tasty.Patterns.Printer ( printAwkExpr )
 import Test.Tasty.Patterns.Types
     ( Expr(And, ERE, EQ, Field, IntLit, StringLit) )
 import Test.Tasty.Providers.ConsoleFormat
     ( failFormat, okFormat, ConsoleFormat )
-import Test.Tasty.Run ( Status(Done), StatusMap )
-import Test.Tasty.Runners.Reducers
-    ( Ap(Ap, getApp), Traversal(Traversal, getTraversal) )
-
-
 
 --------------------------------------------------
 -- TestOutput base definitions
