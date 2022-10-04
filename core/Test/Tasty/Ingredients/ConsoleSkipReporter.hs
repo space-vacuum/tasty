@@ -9,18 +9,7 @@ import Control.Exception
 import Control.Monad.Reader hiding (fail, reader)
 import Control.Monad.State hiding (fail)
 import Prelude hiding (EQ, fail)
-import Test.Tasty.Core
-import Test.Tasty.Ingredients
-import Test.Tasty.Ingredients.ListTests
-import Test.Tasty.Options
-import Test.Tasty.Options.Core
-import Test.Tasty.Patterns
-import Test.Tasty.Patterns.Printer
-import Test.Tasty.Patterns.Types
-import Test.Tasty.Providers.ConsoleFormat
-import Test.Tasty.Run
-import Test.Tasty.Runners.Reducers
-import Text.Printf
+import Text.Printf ( printf )
 import qualified Data.IntMap as IntMap
 
 import Data.List (isInfixOf)
@@ -31,6 +20,28 @@ import System.IO
 import qualified Data.Semigroup as Sem
 import Test.Tasty.Ingredients.ConsoleReporter
 
+-- NOTE: Tasty exposed-modules.
+import Test.Tasty.Ingredients ( Ingredient(TestReporter) )
+import Test.Tasty.Options ( lookupOption, OptionDescription(..) )
+
+-- NOTE: Tasty other-modules (not-exposed).
+import Test.Tasty.Core
+    ( resultSuccessful,
+      Outcome(Failure, Success),
+      Result(resultShortDescription, resultOutcome, resultDescription),
+      TestName,
+      Time )
+import Test.Tasty.Ingredients.ListTests ( testsNames )
+import Test.Tasty.Options.Core ( NumThreads(NumThreads) )
+import Test.Tasty.Patterns ( TestPattern(TestPattern) )
+import Test.Tasty.Patterns.Printer ( printAwkExpr )
+import Test.Tasty.Patterns.Types
+    ( Expr(And, ERE, EQ, Field, IntLit, StringLit) )
+import Test.Tasty.Providers.ConsoleFormat
+    ( failFormat, okFormat, ConsoleFormat )
+import Test.Tasty.Run ( Status(Done), StatusMap )
+import Test.Tasty.Runners.Reducers
+    ( Ap(Ap, getApp), Traversal(Traversal, getTraversal) )
 
 
 
