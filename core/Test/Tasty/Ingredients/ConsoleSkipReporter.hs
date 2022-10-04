@@ -29,8 +29,15 @@ import Data.Typeable
 import System.Console.ANSI
 import System.IO
 import qualified Data.Semigroup as Sem
-
 import Test.Tasty.Ingredients.ConsoleReporter
+
+
+
+
+--------------------------------------------------
+-- TestOutput base definitions
+--------------------------------------------------
+-- {{{
 
 applyHook :: ([TestName] -> Result -> IO Result) -> TestOutput -> TestOutput
 applyHook hook = go []
@@ -41,6 +48,90 @@ applyHook hook = go []
       PrintHeading name printName (go (name : path) printBody)
     go path (Seq a b) = Seq (go path a) (go path b)
     go _ Skip = mempty
+
+-- }}}
+
+--------------------------------------------------
+-- TestOutput modes
+--------------------------------------------------
+-- {{{
+consoleOutput :: (?colors :: Bool) => TestOutput -> StatusMap -> IO ()
+consoleOutput toutput smap =
+  getTraversal . fst $ foldTestOutput foldTest foldHeading toutput smap
+  where
+    foldTest _name printName getResult printResult =
+      ( Traversal $ do
+          printName :: IO ()
+          r <- getResult
+          printResult r
+      , Any True)
+    foldHeading _name printHeading (printBody, Any nonempty) =
+      ( Traversal $ do
+          when nonempty $ do printHeading :: IO (); getTraversal printBody
+      , Any nonempty
+      )
+
+consoleOutputHidingSuccesses :: (?colors :: Bool) => TestOutput -> StatusMap -> IO ()
+consoleOutputHidingSuccesses toutput smap =
+  void . getApp $ foldTestOutput foldTest foldHeading toutput smap
+  where
+    foldTest _name printName getResult printResult =
+      Ap $ do
+          printName :: IO ()
+          r <- getResult
+          if resultSuccessful r
+            then do clearThisLine; return $ Any False
+            else do printResult r :: IO (); return $ Any True
+
+    foldHeading _name printHeading printBody =
+      Ap $ do
+        printHeading :: IO ()
+        Any failed <- getApp printBody
+        unless failed clearAboveLine
+        return $ Any failed
+
+    clearAboveLine = do cursorUpLine 1; clearThisLine
+    clearThisLine = do clearLine; setCursorColumn 0
+
+streamOutputHidingSuccesses :: (?colors :: Bool) => TestOutput -> StatusMap -> IO ()
+streamOutputHidingSuccesses toutput smap =
+  void . flip evalStateT [] . getApp $
+    foldTestOutput foldTest foldHeading toutput smap
+  where
+    foldTest _name printName getResult printResult =
+      Ap $ do
+          r <- liftIO $ getResult
+          if resultSuccessful r
+            then return $ Any False
+            else do
+              stack <- get
+              put []
+
+              liftIO $ do
+                sequence_ $ reverse stack
+                printName :: IO ()
+                printResult r :: IO ()
+
+              return $ Any True
+
+    foldHeading _name printHeading printBody =
+      Ap $ do
+        modify (printHeading :)
+        Any failed <- getApp printBody
+        unless failed $
+          modify $ \stack ->
+            case stack of
+              _:rest -> rest
+              [] -> [] -- shouldn't happen anyway
+        return $ Any failed
+
+-- }}}
+
+--------------------------------------------------
+-- Statistics
+--------------------------------------------------
+-- {{{
+
 
 -- | Wait until
 --
@@ -92,13 +183,13 @@ statusMapResult lookahead0 smap
     finish :: IntMap.IntMap () -> Int -> STM (IO Bool)
     finish ok_tests _ = next_iter ok_tests
 
-getResultFromTVar :: TVar Status -> IO Result
-getResultFromTVar var =
-  atomically $ do
-    status <- readTVar var
-    case status of
-      Done r -> return r
-      _ -> retry
+-- }}}
+
+--------------------------------------------------
+-- Console test reporter
+--------------------------------------------------
+-- {{{
+
 
 -- | A generalization of `consoleTestReporter` that takes a custom
 -- test reporter function
@@ -189,79 +280,39 @@ consoleTestReporterWithHook' hook reporter = TestReporter consoleTestReporterOpt
 
           return $ reporter smap
 
+
+-- }}}
+
 --------------------------------------------------
--- TestOutput modes
+-- Various utilities
 --------------------------------------------------
 -- {{{
-consoleOutput :: (?colors :: Bool) => TestOutput -> StatusMap -> IO ()
-consoleOutput toutput smap =
-  getTraversal . fst $ foldTestOutput foldTest foldHeading toutput smap
-  where
-    foldTest _name printName getResult printResult =
-      ( Traversal $ do
-          printName :: IO ()
-          r <- getResult
-          printResult r
-      , Any True)
-    foldHeading _name printHeading (printBody, Any nonempty) =
-      ( Traversal $ do
-          when nonempty $ do printHeading :: IO (); getTraversal printBody
-      , Any nonempty
-      )
+getResultFromTVar :: TVar Status -> IO Result
+getResultFromTVar var =
+  atomically $ do
+    status <- readTVar var
+    case status of
+      Done r -> return r
+      _ -> retry
 
-consoleOutputHidingSuccesses :: (?colors :: Bool) => TestOutput -> StatusMap -> IO ()
-consoleOutputHidingSuccesses toutput smap =
-  void . getApp $ foldTestOutput foldTest foldHeading toutput smap
-  where
-    foldTest _name printName getResult printResult =
-      Ap $ do
-          printName :: IO ()
-          r <- getResult
-          if resultSuccessful r
-            then do clearThisLine; return $ Any False
-            else do printResult r :: IO (); return $ Any True
+-- }}}
 
-    foldHeading _name printHeading printBody =
-      Ap $ do
-        printHeading :: IO ()
-        Any failed <- getApp printBody
-        unless failed clearAboveLine
-        return $ Any failed
+--------------------------------------------------
+-- Formatting
+--------------------------------------------------
+-- {{{
 
-    clearAboveLine = do cursorUpLine 1; clearThisLine
-    clearThisLine = do clearLine; setCursorColumn 0
+-- (Potentially) colorful output
+ok, fail :: (?colors :: Bool) => String -> IO ()
+fail     = output failFormat
+ok       = output okFormat
 
-streamOutputHidingSuccesses :: (?colors :: Bool) => TestOutput -> StatusMap -> IO ()
-streamOutputHidingSuccesses toutput smap =
-  void . flip evalStateT [] . getApp $
-    foldTestOutput foldTest foldHeading toutput smap
-  where
-    foldTest _name printName getResult printResult =
-      Ap $ do
-          r <- liftIO $ getResult
-          if resultSuccessful r
-            then return $ Any False
-            else do
-              stack <- get
-              put []
-
-              liftIO $ do
-                sequence_ $ reverse stack
-                printName :: IO ()
-                printResult r :: IO ()
-
-              return $ Any True
-
-    foldHeading _name printHeading printBody =
-      Ap $ do
-        modify (printHeading :)
-        Any failed <- getApp printBody
-        unless failed $
-          modify $ \stack ->
-            case stack of
-              _:rest -> rest
-              [] -> [] -- shouldn't happen anyway
-        return $ Any failed
+output
+  :: (?colors :: Bool)
+  => ConsoleFormat
+  -> String
+  -> IO ()
+output format = withConsoleFormat format . putStr
 
 -- }}}
 
@@ -320,14 +371,3 @@ printSkipStatistics st time = do
     _ -> fail $ printf " (%.2fs)\n" time
 
 -- }}}
-
-ok, fail :: (?colors :: Bool) => String -> IO ()
-fail     = output failFormat
-ok       = output okFormat
-
-output
-  :: (?colors :: Bool)
-  => ConsoleFormat
-  -> String
-  -> IO ()
-output format = withConsoleFormat format . putStr
